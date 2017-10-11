@@ -1,4 +1,3 @@
-
 ExtensionsModule = require ("extensions")
 
 function getSolutionName()
@@ -92,13 +91,13 @@ function getLibOptions()
 	return processFunc(selectedOption)
 end
 
-function copyDir(locationPath, folderToCopy, destination)
+function copyDir(solutionDirPath, folderToCopy, destination)
 	local srcDir = path.join('..',  folderToCopy)
 	local destinationDir = nil
 	if destination == nil then
-		destinationDir = path.join(locationPath, folderToCopy)
+		destinationDir = path.join(solutionDirPath, folderToCopy)
 	else
-		destinationDir = path.join(locationPath, destination)
+		destinationDir = path.join(solutionDirPath, destination)
 	end
 	local isOk, err = ExtensionsModule.copydir(srcDir, destinationDir)
 	print(srcDir, destinationDir)
@@ -113,45 +112,18 @@ function createSolution(actionName, solutionName, libs)
 	print(string.format("Creating solution %s for %s", solutionName, actionName))
 	_ACTION = actionName
 	
-	local locationPath = path.join("..", solutionName)
+	local solutionDirPath = path.join("..", solutionName)
 	workspace (solutionName .. "_" .. actionName)
-		location (locationPath)
+		location (solutionDirPath)
 		configurations { "Debug", "Release" }
 		platforms { "x32", "x64" }
 		
 	local libConfigurations = 
 	{
-		imgui=
-		{
-			srcDir="imgui/src"
-		},
-		
-		assimp=
-		{
-			includeDir="assimp/include",
-			binDir="assimp/bin",
-			includeLibs={"assimp-vc140-mt", "zlibstatic"},
-			hasDLL=true
-		},
-		
-		SDL= 
-		{
-			includeDir="SDL/include",
-			binDir="SDL/bin",
-			srcDir="SDL/src",
-			includeLibs={ "SDL2", "SDL2main" },
-			hasDLL=true
-		},
-		
 		DirectX11=
 		{
 			includeLibs={ "d3d11", "d3dcompiler" }
 		},
-		
-		Win32=
-		{
-			srcDir="Win32/src"
-		}
 	}
 	
 	local function getXCopyCmd(libName)
@@ -160,80 +132,81 @@ function createSolution(actionName, solutionName, libs)
 		return string.format("xcopy /Y /D \"%s\" \"%s\"", dllPath, dllDest)
 	end
 	
-	local allIncludeLibs = {}
-	local allIncludeDirs = {}
-	local allLibDirs = {}
-	local allDlls = {}
+	local function solutionCopyDir(toCopy, destinationPath)
+		return copyDir(solutionDirPath, toCopy, destinationPath)
+	end
 	
-
+	local additionalLibs = {}
 	
 	for i=1, table.getn(libs) do
 		local lib = libs[i]
+		
 		local function makeLibsPath(lastPart)
 			return path.join("libs", lib, lastPart)
+		end
+		
+		local function isDir(dir)
+			return os.isdir(path.join("..", dir))
 		end
 	
 		local includePath = makeLibsPath("include")
 		local binPath = makeLibsPath("bin")
 		local srcPath = makeLibsPath("src")
+		local projectFilesPath = makeLibsPath("project")
 		
-		if os.isdir(includePath) then
-			copyDir(locationPath, path.join("libs", "include"))
+		if isDir(includePath) then
+			local copyDestination = path.join("libs", "include", lib)
+			solutionCopyDir(includePath, copyDestination)
+		end
+		
+		if isDir(binPath) then
+			-- copy all bins to one dir. Names might clash
+			local copyDestination = path.join("libs", "bin")
+			solutionCopyDir(binPath, copyDestination)
+		end
+		
+		if isDir(srcPath) then
+			solutionCopyDir(srcPath, path.join("src", lib))
+		end
+		
+		if isDir(projectFilesPath) then
+			solutionCopyDir(projectFilesPath, "src")
+		end
+		
+		if libConfigurations[lib] then
+			libCfg = libConfigurations[lib]
+			if libCfg["includeLibs"] then
+				table.insert(additionalLibs, libCfg["includeLibs"])
+			end
 		end
 		
 	end
 	
-	for i=1, table.getn(libs) do
-		local lib = libs[i]
-		local libConfig = libConfigurations[lib]
-		
-		print (path.join(locationPath, lib, "include"))
-		if os.isdir(path.join(locationPath, lib, "include")) then
-			print ("LUL")
-		end
-		
-		if libConfig["includeDir"] then
-			copyDir(locationPath, path.join("libs", libConfig["includeDir"]))
-			table.insert(allIncludeDirs, path.join(locationPath, "libs", libConfig["includeDir"]))
-		end
-		
-		if libConfig["binDir"] then
-			copyDir(locationPath, path.join("libs", libConfig["binDir"]))
-			table.insert(allLibDirs, path.join(locationPath, "libs", libConfig["binDir"], "%{cfg.platform}"))
-		end
-		
-		if libConfig["srcDir"] then
-			copyDir(locationPath, path.join("libs", libConfig["srcDir"]), "src")
-		end
-		
-		if libConfig["includeLibs"] then
-			table.insert(allIncludeLibs, libConfig["includeLibs"])
-		end
-		
-		if libConfig["hasDLL"] then
-			table.insert(allDlls, getXCopyCmd(lib))
-		end
+	-- get all libs and dlls
+	local allIncludeLibs = {}
+	for k,v in pairs(os.matchfiles(path.join(solutionDirPath, "libs", "bin", "**.lib"))) do 
+		table.insert(allIncludeLibs, path.getname(v))
 	end
+	local allLibDirs = { path.join(solutionDirPath, "libs", "bin"), 
+						 path.join(solutionDirPath, "libs", "bin", "%{cfg.platform}") }
+	local allIncludeDirs = path.join(solutionDirPath, "libs", "include")
 
 	project (solutionName)
-		location (locationPath)
+		location (solutionDirPath)
 		kind "WindowedApp"
 		language "C++"
-		targetdir (path.join(locationPath, "bin/%{cfg.platform}_%{cfg.buildcfg}"))
-		objdir (path.join(locationPath, "obj/%{cfg.platform}_%{cfg.buildcfg}"))
+		targetdir (path.join(solutionDirPath, "bin/%{cfg.platform}_%{cfg.buildcfg}"))
+		objdir (path.join(solutionDirPath, "obj/%{cfg.platform}_%{cfg.buildcfg}"))
 		
-		local srcPath = path.join(locationPath, "src")
+		local srcPath = path.join(solutionDirPath, "src")
 		files { 
 			srcPath .. "/**.h", 
 			srcPath .. "/**.cpp",
 		}
 		
-		local libsDir = path.join(locationPath, "libs")
-		local includeDir = path.join(locationPath, "include")
-		
 		libdirs { allLibDirs }	
 		includedirs { allIncludeDirs }
-		links { allIncludeLibs }
+		links { allIncludeLibs, additionalLibs }
 		
 		filter "configurations:Debug"
 			defines { "DEBUG" }
@@ -243,8 +216,13 @@ function createSolution(actionName, solutionName, libs)
 			defines { "NDEBUG" }
 			optimize "On"
 			
+		local dllPath = "libs\\bin\\%{cfg.platform}\\*.dll"
+		local dllDest = "bin\\%{cfg.platform}_%{cfg.buildcfg}"
+		local platformDlls = string.format("xcopy /Y /D \"%s\" \"%s\"", dllPath, dllDest)
+		local dllPath = "libs\\bin\\*.dll"
+		local globalDlls = string.format("xcopy /Y /D \"%s\" \"%s\"", dllPath, dllDest)
 		configuration "windows"
-			postbuildcommands { allDlls }
+			postbuildcommands { platformDlls, globalDlls }
 
 end
 
