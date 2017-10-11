@@ -231,5 +231,3 @@ local premakeAction = getPremakeAction()
 local libs = getLibOptions()
 
 createSolution(premakeAction, solutionName, libs)
-
-
