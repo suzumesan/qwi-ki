@@ -1,5 +1,5 @@
 # qwi-ki
-qwi-ki is a self-contained VS C++ solution generator aimed for personal game development projects. It comes with a number of libraries that are popular in the gamedev. The output is a ready-to-use VS solution with all the configurations prepared for development.
+qwi-ki is a self-contained VS C++ solution generator aimed for personal game development projects. It comes with a number of popular gamedev libraries. The output is a ready-to-use VS solution with all the configurations prepared for development.
 
 # Libraries
 Currently, qwi-ki supports following libs:
