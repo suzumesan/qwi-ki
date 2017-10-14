@@ -91,14 +91,7 @@ function getLibOptions()
 	return processFunc(selectedOption)
 end
 
-function copyDir(solutionDirPath, folderToCopy, destination)
-	local srcDir = path.join('..',  folderToCopy)
-	local destinationDir = nil
-	if destination == nil then
-		destinationDir = path.join(solutionDirPath, folderToCopy)
-	else
-		destinationDir = path.join(solutionDirPath, destination)
-	end
+function copyDir(srcDir, destinationDir)
 	local isOk, err = ExtensionsModule.copydir(srcDir, destinationDir)
 	print(srcDir, destinationDir)
 	if not isOk then
@@ -133,7 +126,7 @@ function createSolution(actionName, solutionName, libs)
 	end
 	
 	local function solutionCopyDir(toCopy, destinationPath)
-		return copyDir(solutionDirPath, toCopy, destinationPath)
+		return copyDir(toCopy, path.join(solutionDirPath, destinationPath))
 	end
 	
 	local additionalLibs = {}
@@ -142,35 +135,38 @@ function createSolution(actionName, solutionName, libs)
 		local lib = libs[i]
 		
 		local function makeLibsPath(lastPart)
-			return path.join("libs", lib, lastPart)
+			return path.join("..", "libs", lib, lastPart)
 		end
 		
-		local function isDir(dir)
-			return os.isdir(path.join("..", dir))
-		end
-	
 		local includePath = makeLibsPath("include")
 		local binPath = makeLibsPath("bin")
 		local srcPath = makeLibsPath("src")
 		local projectFilesPath = makeLibsPath("project")
+		local licensePath = makeLibsPath("LICENSE")
 		
-		if isDir(includePath) then
+		if os.isdir(includePath) then
 			local copyDestination = path.join("libs", "include", lib)
 			solutionCopyDir(includePath, copyDestination)
 		end
 		
-		if isDir(binPath) then
+		if os.isdir(binPath) then
 			-- copy all bins to one dir. Names might clash
 			local copyDestination = path.join("libs", "bin")
 			solutionCopyDir(binPath, copyDestination)
 		end
 		
-		if isDir(srcPath) then
+		if os.isdir(srcPath) then
 			solutionCopyDir(srcPath, path.join("src", lib))
 		end
 		
-		if isDir(projectFilesPath) then
+		if os.isdir(projectFilesPath) then
 			solutionCopyDir(projectFilesPath, "src")
+		end
+		
+		if os.isfile(licensePath) then
+			local licenseDestination = path.join(solutionDirPath, "LICENSE_" .. lib)
+			print(string.format("Getting license from %s to %s", licensePath, licenseDestination))
+			os.copyfile(licensePath, licenseDestination)
 		end
 		
 		if libConfigurations[lib] then
